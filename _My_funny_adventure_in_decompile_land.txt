@@ -1,0 +1,500 @@
+using help from barrel:
+"""
+for the header, its
+2b format version
+8b workshop id
+1b name length
+nb name
+1b creator name length
+nb creator name
+2b level count
+giant blob of deflated level data
+"""
+
+i used zlib to unzip the blob, worked like a charm!
+now, gonna try to understand what the fuck is going on here
+literally my first time doing smf like that, so may do smf real stupid
+
+Base bare minimum level (only start portals): 305b
+
++1 fruit 340b
++2 fruits 375b
++3 fruits 410b
+
++1 platform 340b
++1 rail 340b
+
+it does seem like any item add 35b of information
+it also does look like x278 contains amount of items on the first level
+
+trying to guess anything about those portals
+after moving them and comparing to base one got:
+
+attempt1:
+diff in 287: 192 -> 240
+diff in 288: 114 -> 116
+diff in 295: 192 -> 224
+
+why is there 3 bytes changed?
+
+attempt2:
+diff in 287: 192 -> 176
+diff in 295: 192 -> 128
+diff in 296: 98 -> 87
+
+WHY ARE THOSE NOT THE SAME?
+
+attempt3:
+diff in 287: 192 -> 128
+diff in 288: 114 -> 111
+diff in 295: 192 -> 48
+diff in 296: 98 -> 112
+
+oh wait i think i got it
+
+attempt4: (moved it very close to the left up corner)
+diff in 287: 192 -> 0
+diff in 288: 114 -> 59
+diff in 295: 192 -> 0
+diff in 296: 98 -> 60
+
+ok so, x287 and x295 are prob for the positions. x288 and x296 may be precision ones? idk
+
+attempt5: (moved portal on the second level very close to the left up corner)
+diff in 185: 192 -> 0
+diff in 186: 114 -> 62
+diff in 193: 192 -> 0
+diff in 194: 98 -> 63
+
+wow, this is funny. Why second level portal coordinates go first in the memory? wonder witch level is first.
+
+attempt5: (moved fifth on the second level very close to the left up corner)
+diff in 15: 192 -> 0
+diff in 16: 114 -> 61
+diff in 23: 192 -> 0
+diff in 24: 98 -> 60
+
+oh, i see! levels probably go one by one in the memory. i thought there was some kind of header for the whole level pack
+but i guess all things levelpack related are stored before compressed data! fun to know
+now, portal cannot have 35b for itself....
+35b * 9 = 315b is just too big for out 305b empty level.....
+
+LETS TRY CHANGING COLORS I GUESS :D
+
+attempt: (changing colors on the fifth level. Gonna call it level0 from now on)
+diff in 0: 105 -> 255
+diff in 1: 105 -> 255
+diff in 2: 105 -> 255
+
+OK SO colors are stored right at the start. thats cool, we can use that for sure :))
+
+attempt: (changing colors on the forth level)
+diff in 238: 105 -> 255
+diff in 239: 105 -> 255
+diff in 240: 105 -> 255
+
+attempt: (changing colors on the sixth level)
+diff in 34: 105 -> 255
+diff in 35: 105 -> 255
+diff in 36: 105 -> 255
+
+so, for some reason levels are placed from fifth forward and then loop to first and go to forth? AND
+
+let's color code levels like that (we even have 3 colors to have 000, 001, 010 and so on!)
+((9th gonna be 0.5 0.5 0.5 tho :D. Quantum computing in Mosa Lina))
+
+diff in 0: 105 -> 0
+diff in 1: 105 -> 0
+diff in 2: 105 -> 0
+
+diff in 34: 105 -> 0
+diff in 35: 105 -> 0
+diff in 36: 105 -> 255
+
+diff in 68: 105 -> 0
+diff in 69: 105 -> 255
+diff in 70: 105 -> 0
+
+diff in 102: 105 -> 0
+diff in 103: 105 -> 255
+diff in 104: 105 -> 255
+
+diff in 136: 105 -> 255
+diff in 137: 105 -> 0
+diff in 138: 105 -> 0
+
+diff in 170: 105 -> 255
+diff in 171: 105 -> 255
+diff in 172: 105 -> 0
+
+diff in 204: 105 -> 255
+diff in 205: 105 -> 255
+diff in 206: 105 -> 255
+
+diff in 238: 105 -> 128
+diff in 239: 105 -> 128
+diff in 240: 105 -> 128
+
+diff in 272: 105 -> 255
+diff in 273: 105 -> 0
+diff in 274: 105 -> 255
+
+Oh
+so the order as i see it is
+5th - 6th - 7th - 8th - 9th - 2th - 3th - 4th - 1th
+what the f*ck????
+
+let me check if it's because i edit those levels in that order
+
+...
+
+does not seem to be the case? oh well. Maybe the order in witch i deleted items may affect it, not the point rn
+
+the fun intell we got is that we know where each level starts
+
+x0 - x34 - x68 - x102 - x136 - x170 - x204 - x238 - x272
+
+welp, it all adds up! i wonder what other info i can gather with only level1 with only enterence portal
+
+attempt: (moving level1 portal)
+diff in 15: 192 -> 0
+diff in 16: 114 -> 59
+diff in 23: 192 -> 0
+diff in 24: 98 -> 60
+
+soo, we have coordinates!
+i think before anything else i should try to build level back to usable form, or else there is no use for decomp lmao
+gonna try change bytes, compress it and see if Mosa Lina see what i've done
+
+...
+
+welp, that was a bad idea :D
+
+my first problem i am having is that mosa lina just like
+stops working :))
+my first culprit is compression function
+
+...
+
+1h+ passed, i somehow added b_level_count two times and did not notice. wanna kms
+BUT! now it works! i can move portal by changing x16 to another number!
+
+now.... i don't really get HOW i move items, we have two bytes per axes, but i did not figure out what it mean yet.
+anyway, let's try to learn how to read filled levels!
+
+attempt: (adding a fruit to level1)
+Looking for diffs:
+diff in 6: 2 -> 1  #AHA! this is where items amount stored! i think?
+diff in 34: 2 -> 105   #this is where the item interfere? #this is where level2 started before
+diff in 35: 0 -> 105
+diff in 36: 0 -> 105
+diff in 40: 0 -> 1
+diff in 41: 128 -> 0
+diff in 42: 118 -> 0
+diff in 43: 64 -> 0
+diff in 50: 90 -> 114
+diff in 57: 0 -> 192
+diff in 58: 0 -> 98
+diff in 59: 0 -> 64
+diff in 60: 0 -> 207
+diff in 61: 0 -> 177
+diff in 62: 0 -> 117
+diff in 63: 0 -> 46
+diff in 64: 0 -> 211
+diff in 65: 0 -> 29
+diff in 66: 0 -> 25
+diff in 67: 0 -> 64
+diff in 68: 0 -> 105
+diff in 69: 255 -> 105  #this is where new level2 starts
+diff in 71: 105 -> 0
+diff in 74: 0 -> 1
+
+SO! we got 35b to work with!
+let's look what different items in different positions give!
+
+added fruit:
+2, 0, 0, 0, 0, 0, 0, 128, 118, 64, 0, 0, 0, 0, 0, 192, 90, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+moved it:
+2, 0, 0, 0, 0, 0, 0, 112, 115, 64, 0, 0, 0, 0, 0, 192, 90, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+2, 0, 0, 0, 0, 0, 0, 96,  115, 64, 0, 0, 0, 0, 0, 0,   77, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+2, 0, 0, 0, 0, 0, 0, 128, 87,  64, 0, 0, 0, 0, 0, 192, 85, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+yep, those are for sure coordinates
+
+rotating:
+2, 0, 0, 0, 0, 0, 0, 128, 87, 64, 0, 0, 0, 0, 0, 192, 85, 64, 0,  0,   0,   0,   0,   0,   0,   0,  0, 0, 0, 0, 0, 0, 0, 0, 0
+2, 0, 0, 0, 0, 0, 0, 128, 87, 64, 0, 0, 0, 0, 0, 192, 85, 64, 67, 153, 102, 188, 244, 245, 254, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+HUH? that's alot of new vars... why does rotation stored in... 8b?
+
+moving without rotating
+2, 0, 0, 0, 0, 0, 0, 128, 87, 64, 0, 0, 0, 0, 0, 192, 85, 64, 67, 153, 102, 188, 244, 245, 254, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0
+2, 0, 0, 0, 0, 0, 0, 32, 107, 64, 0, 0, 0, 0, 0, 0,   85, 64, 67, 153, 102, 188, 244, 245, 254, 63, 0, 0, 0, 0, 0, 0, 0, 0, 0
+
+well... at least moving does not change it, so that's nice
+
+what if i change an item?
+                                /position x                             /postiton y
+34, 0, 0,   0,   0,   0,   0,   80, 115, 64, 0,  0,   0,   0, 0,   0,   83, 64, 24,  45, 68, 84,  251, 33,  25, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+21, 0, 242, 219, 165, 158, 140, 63, 115, 64, 93, 103, 2,   6, 143, 229, 82, 64, 210, 33, 51, 127, 124, 217, 18, 64, 1, 0, 0, 0, 0, 0, 0, 0, 0
+17, 0, 123, 177, 59,  21,  181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0,   0,  0,  0,   0,   0,   0,  0,  1, 0, 0, 0, 0, 0, 0, 0, 0
+
+hmmm... there seams to be alot going on!
+just to be clear, i've tried to move different items to the same place, so some small delta in coords is ok.
+i also expect that items for whatever reason are rotated by defoult. i think barrel changed it for the editor. god bless barrel!
+
+but what are those other numbers??
+no idea, let's test
+
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+                                                                                                      / ОOI! this fella changed
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+i guess this one is for "fixed in space"
+
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0
+and 2 is for rotate! nice!
+
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 128, 86, 64
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,   78, 64
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,   62, 64
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,   0,  0
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,   62, 192
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0,   78, 192
+17, 0, 123, 177, 59, 21, 181, 68, 115, 64, 15, 165, 156, 7, 147, 239, 82, 64, 0, 0, 0, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 128, 86, 192
+
+all the rotations from clockwise to counter-clockwise
+
+again, what are those numbers??? i suspect that the last ones are the directions, and prev two are for the speed
+
+enough of the theory! i wanna try to spawn my own blocks!
+as we saw, x6 in the level1 added one when we got one more item. i think that if we add another one...
+
+105, 105, 105, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64
+105, 105, 105, 0, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64
+                         \ AHA! here it is! i hope this is how we read how much data there is in the file!
+
+if that's it, then i can just read other 35b*N and know what i need for the file!
+
+by the look of things nothing i add from items does not change anything other then x6
+i wonder what do other bytes do..
+
+105, 105, 105, 0, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25
+105, 105, 105, 0, 0, 1, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25
+105, 105, 105, 0, 0, 1, 6, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25
+105, 105, 105, 0, 0, 1, 3, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25
+105, 105, 105, 0, 0, 1, 3, 1, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25
+
+OI, that's interesting!
+
+remember how we found out that the "header" of the level is, like, 34b? WELL IT'S NOT ALWAYS TRUE IT TURNS OUT
+i was lookin what can possible those zeros at the start do. well, the third one stand for the amount of *chosen*
+items for the level. for example, it can be just 0 - meaning normal gameplay
+or it can be 2 - meaning 2 items are *locked*, and there should be 2 new bits after that, explaining witch item is locked
+for example 3 0 1 6 mean that all 3 items are locked, first one is random (the same as not locked), second is "nothing"
+and last one is "box"
+
+That's cool and all, but it also makes life a bit harder since it means that levels can in fact store this kind of data in
+not fixed size structures, so to read any level possible by editor and find at least where each level starts we still need
+to know what all those vars mean.
+
+OH WELL, LETS JUST IGNORE IT AND TRY TO BUILD SOME LEVELS SHALL WE?
+
+i'm gonna try to change the amount of items in the level and add some more boxes in the random positions
+
+l1.print_raw_data(0, 34)
+l1.print_raw_data(34, 69)
+box = l1.raw_data(34, 69)
+l1.change_byte((5).to_bytes(), 6)
+l1.append_bytes(box, 34)
+l1.append_bytes(box, 34)
+l1.append_bytes(box, 34)
+
+OK, THAT CODE ADD THE BOXES ON THE GRID LET'S GO
+
+
+ok, future boyar here. Good news - i can spawn blocks :D
+bad news - no idea how two bits are used to store coordinates
+
+i'm gonna gently move rounded box to the right
+29, 0, 209, 10,  155, 3,   137, 214, 114, 64, 106, 135, 82,  206, 131, 201, 103, 64, 24, 45, 68, 84, 251, 33, 25, 64, 1, 0, 0, 0, 0, 0, 0, 0, 0
+29, 0, 207, 188, 216, 68,  141, 192, 115, 64, 82,  128, 204, 2,   202, 222, 103, 64, 24, 45, 68, 84, 251, 33, 25, 64, 1, 0, 0, 0, 0, 0, 0, 0, 0
+29, 0, 20,  132, 168, 232, 190, 106, 116, 64, 105, 135, 82,  206, 131, 201, 103, 64, 24, 45, 68, 84, 251, 33, 25, 64, 1, 0, 0, 0, 0, 0, 0, 0, 0
+29, 0, 194, 215, 162, 176, 181, 239, 116, 64, 245, 138, 21,  180, 224, 190, 103, 64, 24, 45, 68, 84, 251, 33, 25, 64, 1, 0, 0, 0, 0, 0, 0, 0, 0
+
+i am not sure what all those numbers are
+like, what are they???
+
+17, 0, 204, 185, 234, 109, 157, 210, 114, 64, 198, 90, 128, 147, 176, 239, 102, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+17, 0, 99,  45,  192, 73,  216, 247, 114, 64, 82,  94, 67,  121, 13,  229, 102, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+17, 0, 64,  143, 198, 168, 66,  82,  115, 64, 82,  94, 67,  121, 13,  229, 102, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+
+this is me moving another box to the right... why does the numbers change so much? did not happend before? i think...
+
+17, 0, 64, 143, 198, 168, 66, 82, 115, 64, 82, 94, 67, 121, 13, 229, 102, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+                                                                          [-----ok so, at least i'm sure that
+                                                                            those are for rotation-------------]
+17, 0, 64, 143, 198, 168, 66, 82, 115, 64, 82, 94, 67, 121, 13, 229, 102, 64, 55, 81, 163, 23, 128, 30, 240, 63, 1, 0, 0, 0, 0, 0, 0, 0, 0
+       [--- and all those change when i move item                      ---]
+17, 0, 30, 24, 46, 231, 170, 183, 122, 64, 186, 117, 74, 255, 216, 158, 96, 64, 55, 81, 163, 23, 128, 30, 240, 63, 1, 0, 0, 0, 0, 0, 0, 0, 0
+
+so, what i'm seeing. there is three chunks of 8b that ends with 64. is it all just float/double? it sure look like it, but i
+got very confused where only two number changed.
+
+i got
+427.4792243767314, 132.96398891966766 coords from
+30, 24, 46, 231, 170, 183, 122, 64, 186, 117, 74, 255, 216, 158, 96, 64
+it looks reasonable, tbh :D. Let's try to pack those bad boys with doubles then!
+
+...
+
+played with a worlds a bit, looks like it works!!
+
+now, what do i know about format now:
+
+the whole file starts with a header
+
+2b format version
+8b workshop id
+1b name length
+nb name
+1b creator name length
+nb creator name
+2b level count           @barrel
+
+after that there are level data:
+
+105, 105, 105, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64
+
+3b bg color
+1b fruit type
+1b boss level toggle
+1b locked items amount
+nb locked items info
+4b items amount (there are at least two bytes that are saved for item amount. maybe more, the only way to test it is
+to spawn at least 65536 items. not doing that :D. gonna assume there is an INT reserved)
+24b of "transform" of the start portal (double x, double y, double rotation)
+
+4b of item amount can be used to read next 25b x N amount of data. it contains items
+
+17, 0, 64, 143, 198, 168, 66, 82, 115, 64, 82, 94, 67, 121, 13, 229, 102, 64, 55, 81, 163, 23, 128, 30, 240, 63, 1, 0, 0, 0, 0, 0, 0, 0, 0
+
+1b of type
+1b of undef data (prob. a bool flag. no idea why it's used) -- CORRECTION it's 2b of type! Thanks Barrel :D
+24b of "transform" of the object (double x, double y, double rotation)
+1b of the joint (0 for free, 1 for fixed, 2 for rotating)
+4b of undef data (sadly, no idea. all levels i have default it to 0) -- CORRECTION: data for rotation, its 8b!
+4b of rotation speed. may not all 4b, but we have all editor speeds:
+
+0, 128, 86, 64
+0, 0,   78, 64
+0, 0,   62, 64
+0, 0,   62, 64
+0, 0,   0,  0
+0, 0,   62, 192
+0, 0,   78, 192
+0, 128, 86, 192
+
+[ id ] [ transform 24b ] [ joint and 8b speed ]
+17, 0, 64, 143, ..., 63, 1, 0, 0, ... 0, 0, 0
+
+UPD
+found THE FUNNY (tm)
+some items do not have rotation speed. they just do not :')
+for hedges, ropes and portals they do not have last 8b. be careful!
+the id are 1, 3, 4, 5 and 6
+
+UPD: 3 is not 8b less, it's 7b more. deal with it lmao
+
+
+-------------This is where i made RandomPack------------------
+
+
+
+OK SO FUNNY THING
+Barrel just updated the editor. If everything is ok - he is gonna merge new version with main.
+That means i should prob. try to understand items better if i'm gonna make the code usable and readable
+
+first, let's check if the level header changed or not
+
+old example
+105, 105, 105, 0, 0, 0, 27, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64
+new example
+105, 105, 105, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64, 22, 0, 216, ...
+tbh, doesn't look like it!
+witch is strange, there should be new flag for *scrolling* level...
+let me see
+
+this
+105, 105, 105, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64, 22, 0,
+added "allow boss level"
+105, 105, 105, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64, 22, 0
+removed scroll
+105, 105, 105, 0, 1, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 192, 114, 64, 0, 0, 0, 0, 0, 192, 98, 64, 207, 177, 117, 46, 211, 29, 25, 64, 22, 0,
+AHA! second char is 2 if we are scrolling! good to know
+
+so, we have
+  3b             1b             1b             1b + nb         4b              24b
+[ color      ] [ fruit type ] [ boss/scroll ] [locked items] [ items amount ] [ entrance portal position and rotation]
+105, 105, 105,   0,             1,             0,              2, 0, 0, 0,     0, 0, 0, 0, 0, 192, 114, 64, 0, ...
+
+Noice! there is no need for more work. UNFORTUNATELY ITEMS ARE PROBABLY GONNA SUCK
+> the worst part, i'm gonna be changing which ones have which parameters a lot in the next couple patches
+                                                                                                (C) Barrel
+I should note that in the header of the level pack there is a "version", and game can use old versions
+but if i wanna use new features being able to read new level files a must
+
+SO, HOW DO ONE TRY TO SOLVE IT? ALL ITEMS LEVEL!
+or maybe not wait i can just scan them one by one i'm silly
+
+fruit
+2, 0, 8,   173, 44,  153, 232, 104, 105, 64, 234, 70,  60,  243, 65,  43,  93, 64, 0,   0,  0,  0,   0,   0,   0,  0,  0, 0, 0, 0, 0, 0, 0,  0,  0
+exit_portal
+1, 0, 124, 169, 105, 179, 139, 115, 105, 64, 194, 190, 251, 21,  185, 195, 88, 64, 0,   0,  0,  0,   0,   0,   0,  0
+clamp
+3, 0, 7,   134, 203, 185, 234, 221, 105, 64, 231, 170, 183, 117, 74, 255,  94, 64, 210, 33, 51, 127, 124, 217, 18, 64, 0, 0, 0, 0, 0, 0, 48, 64, 0, 0, 0, 0, 0, 0, 32, 64
+hinge_minus
+4, 0, 226, 153, 15, 90, 89, 106, 115, 64, 58, 126, 30, 141, 81, 133, 86, 64, 70, 234, 255, 158, 219, 143, 23, 64, 0
+hinge_plus
+5, 0, 43, 36, 197, 90, 128, 203, 113, 64, 32, 219, 19, 68, 160, 110, 88, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+rail_block
+7, 0, 4,   195, 229, 92,  245, 38, 108,  64, 245, 182, 78,  233, 31,  219, 101, 64, 0,  0,  0,  0,   0,   0,   0,  0,  0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 200, 66
+leaves
+6, 0, 211, 102, 23,    7, 134,  59, 109, 64, 233, 248, 121, 52, 70,  21,  94,  64, 24, 45,  68, 84, 251, 33, 249, 63, 3
+balloon
+27, 0, 101, 162, 227, 231, 209, 136, 105, 64, 25, 85,  72,  138, 181, 0,  93, 64, 24, 45, 68, 84, 251, 33, 25,    64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+spike
+9, 0, 161, 149, 37,  19,  29,  119, 112, 64, 7,   134, 203, 185, 234, 109, 89, 64, 0,  0,  0,  0,  0,   0,  0,  0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+cannon
+8, 0, 7,   134, 203, 185, 234, 221, 105, 64, 146, 98,  45,  192, 73,  216, 89, 64, 24, 45, 68, 84, 251, 33, 25, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+box
+41, 0, 132, 86, 150, 76, 116, 108, 100, 64, 48, 92, 206, 85, 111, 235, 92, 64, 24, 45, 68, 84, 251, 33, 25, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+ball
+43, 0, 167, 244, 143, 237, 9, 146, 107, 64, 119, 113, 96, 184, 156, 171, 92, 64, 24, 45, 68, 84, 251, 33, 25, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0
+spear
+36, 0, 184, 156, 171, 222, 214, 153, 111, 64, 203, 146, 137, 142, 159, 71, 99, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+frog
+34, 0, 187, 17, 207, 124, 208, 58, 110, 64,  206, 46,  14,  12,  151, 115, 97, 64, 24,  45, 68, 84,  251, 33,  25, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+wombat
+37, 0, 9, 212, 141, 120, 230, 59, 113, 64, 137, 103, 62, 104, 101, 201, 96, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+mushroom
+35, 0, 47, 14, 12, 151, 115, 69, 110, 64, 136, 64, 221, 136, 103, 62, 97, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0
+instabox
+38, 0, 167, 244, 143, 237, 9, 146, 107, 64, 253, 60, 26, 163, 10, 73, 97, 64, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0
+
+
+So, what do we see:
+- exit_portal and hinges does not have 9b. looks like it does not have rotation and joint. fair enough! hinges also have one more bit for some reason?
+- clamp use extra 7b, we all knew that. Now i finaly get why! well not really
+it's not extra 7b, it's -9b from not having a joint and rotation and +16b for 2 INTEGERS. they control... something?
+- rail adds 4b info. Length probably? no idea why it's not 8b like other params. but oh well!
+7, 0, 49, 131, 47, 53, 109, 230, 108, 64, 240, 165, 166, 205, 46, 14, 105, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 128, 63
+7, 0, 49, 131, 47, 53, 109, 230, 108, 64, 240, 165, 166, 205, 46, 14, 105, 64, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 86, 111, 79, 66
+nwm, it looks like a floating point number! still, not a double, prob float, gonna check later
+- leaves, extra char for amount, nothing crazy. Can try to make it bigger tho :D. also does not have joint and rotation!
+- frog have 4b added data? for jump direction perhaps
+all other items seem to be normal. GOOD, those changes are bad enough
+
+Now, let's try to, idk, place all items?
+(also, i wonder what is the 42th item. it should be with box and ball)
+
+
